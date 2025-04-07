@@ -1,6 +1,6 @@
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 
 
@@ -19,6 +19,7 @@ def get_ssq_result(days: int = 30, issue_count: int = None) -> Optional[List[Dic
     else:
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
         params.update({
             'dayStart': start_date,
             'dayEnd': end_date
