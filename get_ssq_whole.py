@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Tuple
 
 # 常量定义
 API_URL = 'https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice'
-DEFAULT_DAYS = 30
+DEFAULT_DAYS = 365
 TIMEOUT = 10
 RED_BALL_RANGE = (1, 34)
 BLUE_BALL_RANGE = (1, 17)
@@ -41,6 +41,9 @@ class LotteryAnalyzer:
         if not data or data['state'] != 0 or not data['result']:
             print("未获取到开奖数据")
             return None
+
+        #print(data['result'][1:] )
+        #return data['result'][1:] if len(data['result']) > 1 else []
 
         return data['result']
 
@@ -150,70 +153,110 @@ class LotteryAnalyzer:
 
         return stats
 
+    @staticmethod
+    def predict_next_result(results: List[Dict]) -> Dict[str, List[int]]:
+        """综合预测下期结果（学术研究用）"""
+        if not results or len(results) < 30:
+            raise ValueError("需要至少30期数据进行分析")
 
-def predict_next_result(results: List[Dict]) -> Dict[str, List[int]]:
-    """综合预测下期结果（学术研究用）"""
-    if not results or len(results) < 30:
-        raise ValueError("需要至少30期数据进行分析")
+        # 获取各项分析结果
+        freq = LotteryAnalyzer.analyze_frequency(results)
+        omission = LotteryAnalyzer.analyze_omission(results)
+        ratios = LotteryAnalyzer.analyze_ratio(results)
+        zones = LotteryAnalyzer.analyze_distribution(results)
 
-    # 获取各项分析结果
-    freq = LotteryAnalyzer.analyze_frequency(results)
-    omission = LotteryAnalyzer.analyze_omission(results)
-    ratios = LotteryAnalyzer.analyze_ratio(results)
-    zones = LotteryAnalyzer.analyze_distribution(results)
+        # 红球预测逻辑
+        red_candidates = []
 
-    # 红球预测逻辑
-    red_candidates = []
+        # 1. 考虑高频号码（权重40%）
+        top_red = list(freq['红球'].keys())[:15]
+        red_candidates.extend(top_red)
 
-    # 1. 考虑高频号码（权重40%）
-    top_red = list(freq['红球'].keys())[:15]
-    red_candidates.extend(top_red)
+        # 2. 考虑大遗漏号码（权重30%）
+        sorted_omission = sorted(omission['红球'].items(), key=lambda x: x[1], reverse=True)
+        red_candidates.extend([x[0] for x in sorted_omission[:10]])
 
-    # 2. 考虑大遗漏号码（权重30%）
-    sorted_omission = sorted(omission['红球'].items(), key=lambda x: x[1], reverse=True)
-    red_candidates.extend([x[0] for x in sorted_omission[:10]])
+        # 3. 考虑区间分布（权重20%）
+        max_zone = max(zones['红球'].items(), key=lambda x: x[1])[0]
+        start, end = map(int, max_zone.split('-'))
+        red_candidates.extend([x for x in range(start, end + 1) if x in freq['红球']])
 
-    # 3. 考虑区间分布（权重20%）
-    max_zone = max(zones['红球'].items(), key=lambda x: x[1])[0]
-    start, end = map(int, max_zone.split('-'))
-    red_candidates.extend([x for x in range(start, end + 1) if x in freq['红球']])
+        # 4. 考虑奇偶比例
+        odd_even = '奇数' if ratios['红球']['奇数'] > 0.5 else '偶数'
+        red_candidates.extend([x for x in range(1, 34) if x % 2 == (1 if odd_even == '奇数' else 0)])
 
-    # 4. 考虑奇偶比例
-    odd_even = '奇数' if ratios['红球']['奇数'] > 0.5 else '偶数'
-    red_candidates.extend([x for x in range(1, 34) if x % 2 == (1 if odd_even == '奇数' else 0)])
+        # 蓝球预测逻辑
+        blue_candidates = []
 
-    # 蓝球预测逻辑
-    blue_candidates = []
+        # 1. 高频蓝球（权重50%）
+        blue_candidates.extend(list(freq['蓝球'].keys())[:5])
 
-    # 1. 高频蓝球（权重50%）
-    blue_candidates.extend(list(freq['蓝球'].keys())[:5])
+        # 2. 大遗漏蓝球（权重30%）
+        sorted_blue_omission = sorted(omission['蓝球'].items(), key=lambda x: x[1], reverse=True)
+        blue_candidates.extend([x[0] for x in sorted_blue_omission[:3]])
 
-    # 2. 大遗漏蓝球（权重30%）
-    sorted_blue_omission = sorted(omission['蓝球'].items(), key=lambda x: x[1], reverse=True)
-    blue_candidates.extend([x[0] for x in sorted_blue_omission[:3]])
+        # 3. 奇偶选择
+        blue_odd_even = '奇数' if ratios['蓝球']['奇数'] > 0.5 else '偶数'
+        blue_candidates.extend([x for x in range(1, 17) if x % 2 == (1 if blue_odd_even == '奇数' else 0)])
 
-    # 3. 奇偶选择
-    blue_odd_even = '奇数' if ratios['蓝球']['奇数'] > 0.5 else '偶数'
-    blue_candidates.extend([x for x in range(1, 17) if x % 2 == (1 if blue_odd_even == '奇数' else 0)])
+        # 去重并排序
+        red_candidates = sorted(list(set(red_candidates)))
+        blue_candidates = sorted(list(set(blue_candidates)))
 
-    # 去重并排序
-    red_candidates = sorted(list(set(red_candidates)))
-    blue_candidates = sorted(list(set(blue_candidates)))
+        # 计算每个号码的综合得分
+        red_scores = {ball: 0 for ball in red_candidates}
+        blue_scores = {ball: 0 for ball in blue_candidates}
 
-    return {
-        '红球候选': red_candidates,
-        '蓝球候选': blue_candidates,
-        '建议组合': {
-            '红球': sorted(sample(red_candidates, 6)),
-            '蓝球': choice(blue_candidates)
+        # 红球评分
+        for ball in red_candidates:
+            # 频率得分
+            red_scores[ball] += freq['红球'].get(ball, 0) * 0.4
+            # 遗漏得分
+            red_scores[ball] += (1 / (omission['红球'].get(ball, 0) + 1)) * 0.3
+            # 区间得分
+            zone_score = 0
+            if 1 <= ball <= 11:
+                zone_score = zones['红球']['1-11']
+            elif 12 <= ball <= 22:
+                zone_score = zones['红球']['12-22']
+            else:
+                zone_score = zones['红球']['23-33']
+            red_scores[ball] += zone_score * 0.2
+            # 奇偶得分
+            if (ball % 2 == 1 and ratios['红球']['奇数'] > 0.5) or (ball % 2 == 0 and ratios['红球']['偶数'] > 0.5):
+                red_scores[ball] += 0.1
+
+        # 蓝球评分
+        for ball in blue_candidates:
+            # 频率得分
+            blue_scores[ball] += freq['蓝球'].get(ball, 0) * 0.5
+            # 遗漏得分
+            blue_scores[ball] += (1 / (omission['蓝球'].get(ball, 0) + 1)) * 0.3
+            # 区间得分
+            zone_score = zones['蓝球']['1-8'] if ball <= 8 else zones['蓝球']['9-16']
+            blue_scores[ball] += zone_score * 0.2
+
+        # 选择得分最高的6个红球和1个蓝球
+        top_red_balls = sorted(red_scores.items(), key=lambda x: x[1], reverse=True)[:6]
+        top_blue_ball = sorted(blue_scores.items(), key=lambda x: x[1], reverse=True)[0]
+
+        return {
+            '红球候选': red_candidates,
+            '蓝球候选': blue_candidates,
+            '建议组合': {
+                '红球': sorted([ball[0] for ball in top_red_balls]),
+                '蓝球': top_blue_ball[0]
+            },
+            '得分详情': {
+                '红球得分': red_scores,
+                '蓝球得分': blue_scores
+            }
         }
-    }
-
 
 def main():
     """主程序"""
     # 获取数据
-    raw_results = LotteryAnalyzer.get_results(issue_count=100)
+    raw_results = LotteryAnalyzer.get_results(issue_count=101)
     if not raw_results:
         return
 
@@ -248,10 +291,14 @@ def main():
 
     print("\n=== 预测分析 ===")
     try:
-        prediction = predict_next_result(results)
+        prediction = LotteryAnalyzer.predict_next_result(results)
         print("红球候选号码:", prediction['红球候选'])
         print("蓝球候选号码:", prediction['蓝球候选'])
-        print("建议组合（随机生成）:", prediction['建议组合'])
+        print("建议组合（概率最高）:", prediction['建议组合'])
+        # 可以添加得分详情输出
+        print("\n得分详情:")
+        print("红球得分:", {k: round(v, 2) for k, v in prediction['得分详情']['红球得分'].items()})
+        print("蓝球得分:", {k: round(v, 2) for k, v in prediction['得分详情']['蓝球得分'].items()})
     except ValueError as e:
         print(f"预测失败: {e}")
 
