@@ -130,67 +130,104 @@ def omission_analysis(results: List[Dict]) -> Dict[str, Dict[str, int]]:
 
 def zone_distribution(results: List[Dict]):
     """
-    红球区间分布分析
-    将33个红球分为3个区间(1-11,12-22,23-33)
-    :param results: 历史开奖结果
-    :return: 各区间的出现频率
+    完善后的区间分布分析(包含红球和蓝球)
+    红球分3个区间(1-11,12-22,23-33)
+    蓝球分2个区间(1-8,9-16)
     """
-    zone_counts = {'1-11': 0, '12-22': 0, '23-33': 0}
+    red_zones = {'1-11': 0, '12-22': 0, '23-33': 0}
+    blue_zones = {'1-8': 0, '9-16': 0}
 
     for result in results:
+        # 红球区间统计
         reds = [int(red) for red in result['red'].split(',')]
         for red in reds:
             if 1 <= red <= 11:
-                zone_counts['1-11'] += 1
+                red_zones['1-11'] += 1
             elif 12 <= red <= 22:
-                zone_counts['12-22'] += 1
+                red_zones['12-22'] += 1
             else:
-                zone_counts['23-33'] += 1
+                red_zones['23-33'] += 1
 
-    total = sum(zone_counts.values())
-    return {zone: count / total for zone, count in zone_counts.items()}
+        # 蓝球区间统计
+        blue = int(result['blue'])
+        if 1 <= blue <= 8:
+            blue_zones['1-8'] += 1
+        else:
+            blue_zones['9-16'] += 1
+
+    red_total = sum(red_zones.values())
+    blue_total = sum(blue_zones.values())
+
+    return {
+        'red': {zone: count / red_total for zone, count in red_zones.items()},
+        'blue': {zone: count / blue_total for zone, count in blue_zones.items()}
+    }
 
 
 def odd_even_ratio(results: List[Dict]):
     """
-    红球奇偶比例分析
-    :param results: 历史开奖结果
-    :return: 奇数和偶数的比例
+    完善后的奇偶比例分析(包含红球和蓝球)
     """
-    odd = 0
-    even = 0
+    red_odd = red_even = 0
+    blue_odd = blue_even = 0
 
     for result in results:
+        # 红球奇偶统计
         reds = [int(red) for red in result['red'].split(',')]
         for red in reds:
             if red % 2 == 1:
-                odd += 1
+                red_odd += 1
             else:
-                even += 1
+                red_even += 1
 
-    total = odd + even
-    return {'奇数': odd / total, '偶数': even / total}
+        # 蓝球奇偶统计
+        blue = int(result['blue'])
+        if blue % 2 == 1:
+            blue_odd += 1
+        else:
+            blue_even += 1
+
+    red_total = red_odd + red_even
+    blue_total = blue_odd + blue_even
+
+    return {
+        'red': {'奇数': red_odd / red_total, '偶数': red_even / red_total},
+        'blue': {'奇数': blue_odd / blue_total, '偶数': blue_even / blue_total}
+    }
 
 
 def big_small_analysis(results: List[Dict]):
     """
-    红球大小号分析(以17为分界线)
-    :param results: 历史开奖结果
-    :return: 大号和小号的比例
+    完善后的大小号分析(包含红球和蓝球)
+    红球以17为分界线(1-16为小号,17-33为大号)
+    蓝球以9为分界线(1-8为小号,9-16为大号)
     """
-    big = 0
-    small = 0
+    red_big = red_small = 0
+    blue_big = blue_small = 0
 
     for result in results:
+        # 红球大小统计
         reds = [int(red) for red in result['red'].split(',')]
         for red in reds:
             if red >= 17:
-                big += 1
+                red_big += 1
             else:
-                small += 1
+                red_small += 1
 
-    total = big + small
-    return {'大号': big / total, '小号': small / total}
+        # 蓝球大小统计
+        blue = int(result['blue'])
+        if blue >= 9:
+            blue_big += 1
+        else:
+            blue_small += 1
+
+    red_total = red_big + red_small
+    blue_total = blue_big + blue_small
+
+    return {
+        'red': {'大号': red_big / red_total, '小号': red_small / red_total},
+        'blue': {'大号': blue_big / blue_total, '小号': blue_small / blue_total}
+    }
 
 if __name__ == '__main__':
     # 示例1：获取最近30天的结果
@@ -236,17 +273,26 @@ if __name__ == '__main__':
                 # 区间分布分析
                 zones = zone_distribution(history)
                 print("\n红球区间分布:")
-                for zone, ratio in zones.items():
+                for zone, ratio in zones['red'].items():
+                    print(f"{zone}区: {ratio:.1%}")
+                print("\n蓝球区间分布:")
+                for zone, ratio in zones['blue'].items():
                     print(f"{zone}区: {ratio:.1%}")
 
                 # 奇偶比例分析
                 oe_ratio = odd_even_ratio(history)
                 print("\n红球奇偶比例:")
-                print(f"奇数: {oe_ratio['奇数']:.1%}")
-                print(f"偶数: {oe_ratio['偶数']:.1%}")
+                print(f"奇数: {oe_ratio['red']['奇数']:.1%}")
+                print(f"偶数: {oe_ratio['red']['偶数']:.1%}")
+                print("\n蓝球奇偶比例:")
+                print(f"奇数: {oe_ratio['blue']['奇数']:.1%}")
+                print(f"偶数: {oe_ratio['blue']['偶数']:.1%}")
 
                 # 大小号分析
                 bs_ratio = big_small_analysis(history)
                 print("\n红球大小比例(以17为界):")
-                print(f"大号: {bs_ratio['大号']:.1%}")
-                print(f"小号: {bs_ratio['小号']:.1%}")
+                print(f"大号: {bs_ratio['red']['大号']:.1%}")
+                print(f"小号: {bs_ratio['red']['小号']:.1%}")
+                print("\n蓝球大小比例(以9为界):")
+                print(f"大号: {bs_ratio['blue']['大号']:.1%}")
+                print(f"小号: {bs_ratio['blue']['小号']:.1%}")
